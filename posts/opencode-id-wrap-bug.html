@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2026年8月14日20:00，全世界的OpenCode突然死了</title>
+<meta name="description" content="一条消息发出去，AI 再也没回。排查到深夜，凶手是一串 2.18 年绕一圈的 48 位计数器：opencode 消息 ID 回绕事故全记录。">
+<meta name="author" content="单禹铎">
+<meta name="keywords" content="opencode,bug,消息ID,回绕,48位,技术排查,AI编程">
+<link rel="canonical" href="https://shanyuduo.github.io/blog/posts/opencode-id-wrap-bug.html">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "NewsArticle",
+  "headline": "2026年8月14日20:00，全世界的OpenCode突然死了",
+  "description": "一条消息发出去，AI 再也没回。排查到深夜，凶手是一串 2.18 年绕一圈的 48 位计数器：opencode 消息 ID 回绕事故全记录。",
+  "datePublished": "2026-08-14",
+  "dateModified": "2026-08-14",
+  "author": { "@type": "Person", "name": "单禹铎", "url": "https://github.com/shanyuduo" },
+  "publisher": { "@type": "Person", "name": "单禹铎", "url": "https://github.com/shanyuduo" },
+  "mainEntityOfPage": { "@type": "WebPage", "@id": "https://shanyuduo.github.io/blog/posts/opencode-id-wrap-bug.html" },
+  "inLanguage": "zh-CN"
+}
+</script>
+<style>
+  :root { --text:#1f2937; --muted:#6b7280; --accent:#2563eb; --bg:#fafafa; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); line-height:1.8; }
+  .wrap { max-width:720px; margin:0 auto; padding:48px 20px 80px; }
+  header.site { margin-bottom:32px; }
+  header.site a { color:var(--text); text-decoration:none; font-weight:700; font-size:20px; }
+  header.site a:hover { color:var(--accent); }
+  article h1 { font-size:26px; line-height:1.4; margin-bottom:12px; }
+  .meta { color:var(--muted); font-size:14px; margin-bottom:28px; }
+  article p { margin-bottom:18px; font-size:17px; }
+  .footer { margin-top:48px; padding-top:20px; border-top:1px solid #e5e7eb; color:var(--muted); font-size:13px; }
+  .footer a { color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="site"><a href="https://shanyuduo.github.io/blog/">深夜技术考古</a></header>
+
+<article>
+<h1>2026年8月14日20:00，全世界的OpenCode突然死了</h1>
+<div class="meta">发布于 2026-08-14 · 作者：单禹铎 · 分类：技术排查</div>
+<p>2026年8月14日，晚上20点28分。</p>
+<p>一台 Windows 电脑前，有人对着终端敲下一行字，按下回车。</p>
+<p>一片死寂。</p>
+<p>屏幕里那个 AI 编程助手叫 opencode，开源项目，跑在终端里，代码仓库已经从 sst/opencode 搬到了 anomalyco/opencode。出事的机器，装的是 Windows 版 1.18.10。</p>
+<p>出事的是个老会话，8月5日创建，攒了960条消息，九天的活儿全在里面。此刻，消息发出去了，数据库里也存进去了，AI 就是不回一个字。</p>
+<p>重启。没用。</p>
+<p>换模型，从 deepseek-v4-pro 换到它的 variant，再换到 gpt-5.6-luna。没用。</p>
+<p>重装。还是没用。</p>
+<p>能想到的招，全试了一遍。</p>
+<p>转机出现在日志里：处理循环在 60 到 105 毫秒内打出一行 "exiting loop"，转身退出。全程没有调用任何 AI 模型，也没有一个报错。</p>
+<p>它不是坏了，是压根没打算说话。</p>
+<p>再扒数据库，一条僵尸消息躺在那儿：0 个 token，状态未完成，只剩一个 step-start 和一段空的 reasoning。</p>
+<p>问题来了：程序凭什么不回？</p>
+<p>答案藏在每条消息的 ID 里。</p>
+<p>opencode 给消息编门牌号：msg_ 打头，接 12 位十六进制。核心是毫秒时间戳乘以 4096，加上同毫秒内的序号，只保留低 48 位，尾巴上再拼几个随机字符。</p>
+<p>48 位不是无限的。2 的 48 次方除以 4096，换算下来是 795.364 天，约 2.18 年。</p>
+<p>这颗炸弹，从软件出生那天起，就在倒计时。</p>
+<p>回看当天：18点45分，门牌号 fffe0770a001，顶到了 48 位的天花板；19点19分55秒（东八区），计数器走满，归零；20点28分，新消息领到 0003ec4ee001，一个从头数起的小号。</p>
+<p>致命的一步在这里：opencode 判断哪条消息更新，用的是字符串比大小。</p>
+<p>它只用字母表排序，不用日历。</p>
+<p>在字母表里，0003 打头的新号，排在 fffe 打头的旧号前面。程序于是认定，最新的那条消息早就回复过了，跳过。</p>
+<p>每一条新消息，都被当成了旧消息，永久跳过。</p>
+<p>会话就这么死了。没有报错，因为在程序自己看来，它没做错任何事。</p>
+<p>21点13分08秒到21点13分35秒，同秒级对照实验。</p>
+<p>同一个进程，同一个模型，27 秒之内：老会话发消息，哑火；新开的会话发消息，对答如流。</p>
+<p>网络排除了，模型排除了。出问题的，只是那个跨过了 19点19分55秒 的老会话。</p>
+<p>深夜，数据库手术。</p>
+<p>先备份。再把 949 条回绕前的老消息门牌号，手工改成按时间递增的小号，引用字段同步改。</p>
+<p>第一刀切错了地方，去补 completed 字段，无效，弯路。第二刀切对位置，重启。</p>
+<p>960 条消息的老会话，复活。</p>
+<p>插曲：手术中途做过一次回滚，界面上两百多条消息瞬间"消失"。扒开数据库一看，全在。排序错乱叠加回滚视图的假象，虚惊一场。</p>
+<p>同一天，GitHub 上有人提交了完整报告：anomalyco/opencode#42583。老版本 v1.15.13 有这个 bug，最新 dev 版也有。</p>
+<p>再翻旧账，还有个 #38787：AI 反复回答同一个问题。同一根因的另一面，排序错乱方向相反，症状从装死变成复读。</p>
+<p>这个 bug 有个著名的家族：千年虫，Y2038。都是计数器走到头，翻回起点，程序的世界观当场塌掉。</p>
+<p>区别只在周期：千年虫 100 年，Y2038 68 年，opencode，795.364 天。</p>
+<p>修好这一个会话，故事没完。795 天后，门牌号会再绕一圈，所有跨过那一刻的老会话，再死一次。</p>
+<p>标题里的"全世界"，不是修辞。19点19分55秒，全球每一台机器上跨过这一刻的 opencode 老会话，同时沉默。</p>
+<p>下一次归零的倒计时，从那一秒起，已经在走了。</p>
+</article>
+<footer class="footer">
+  本站文章为原创内容，作者：单禹铎（<a href="https://github.com/shanyuduo">GitHub</a>）。
+  文章版权归作者所有，转载需注明出处。
+</footer>
+</div>
+</body>
+</html>
